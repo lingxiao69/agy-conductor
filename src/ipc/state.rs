@@ -46,6 +46,7 @@ pub struct AppCoreState {
     pub live_log_sink: Option<Arc<LiveLogSink>>,
     pub completion: Option<CompletionSummary>,
     pub active_engine_tx: Option<mpsc::UnboundedSender<EngineControl>>,
+    pub run_generation: u64,
     pub job_guard: Option<SharedJobGuard>,
     pub main_hwnd: Option<isize>,
     pub update_in_progress: bool,
@@ -117,6 +118,7 @@ impl AppCoreState {
             live_log_sink: None,
             completion: None,
             active_engine_tx: None,
+            run_generation: 0,
             job_guard,
             main_hwnd,
             update_in_progress: false,
@@ -236,9 +238,58 @@ impl AppCoreState {
 
     pub fn apply_default_roster(&mut self) {
         let prefer = self.config.prefer_gateway_models;
-        self.config.slots = build_default_roster(&self.models, prefer);
+        let mut next_slots = build_default_roster(&self.models, prefer);
+        if self.is_run_active() {
+            let existing: HashMap<&str, &AgentSlot> = self
+                .config
+                .slots
+                .iter()
+                .map(|s| (s.slot_id.as_str(), s))
+                .collect();
+            for slot in &mut next_slots {
+                if let Some(prev) = existing.get(slot.slot_id.as_str()) {
+                    if prev.model_id == slot.model_id && prev.role == slot.role {
+                        slot.state = prev.state;
+                        slot.conversation_id = prev.conversation_id.clone();
+                        slot.session_reused = prev.session_reused;
+                        slot.current_activity = prev.current_activity.clone();
+                        slot.consecutive_failures = prev.consecutive_failures;
+                        slot.usage = prev.usage.clone();
+                    }
+                }
+            }
+        }
+        self.config.slots = next_slots;
         self.config.active_preset_id = None;
         self.save_persisted_config();
+        self.sync_live_log_slots();
+        self.sync_roster_to_active_engine();
+    }
+
+    /// 重置当前运行会话：递增 `run_generation` 彻底隔离旧引擎异步事件，
+    /// 终止旧引擎、清空当前会话路径与任务/消息/日志并复位所有槽位状态。
+    pub fn reset_run_state(&mut self) {
+        self.run_generation = self.run_generation.wrapping_add(1);
+        if let Some(tx) = self.active_engine_tx.take() {
+            let _ = tx.send(EngineControl::Stop);
+        }
+        self.current_room_id = None;
+        self.current_room_dir = None;
+        self.phase = RunPhase::Idle;
+        self.tasks.clear();
+        self.messages.clear();
+        self.terminal_lines.clear();
+        self.active_blocker = None;
+        self.live_log_sink = None;
+        self.completion = None;
+        for slot in &mut self.config.slots {
+            slot.state = SlotRunState::Idle;
+            slot.current_activity = None;
+            slot.conversation_id = None;
+            slot.session_reused = false;
+            slot.consecutive_failures = 0;
+            slot.usage = SlotUsageStats::for_model(&slot.model_id);
+        }
     }
 
     pub fn save_roster_preset(

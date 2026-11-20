@@ -8,7 +8,9 @@ use crate::orchestrator::priority_pool::{
     select_slot_for_new_task, select_slot_for_rework, SlotSelection,
 };
 use crate::orchestrator::types::{MessageBadge, RoleKind, RunPhase, TaskStatus};
-use crate::orchestrator::workspace_guard::{dependencies_satisfied, has_active_path_conflict};
+use crate::orchestrator::workspace_guard::{
+    dependencies_satisfied, has_active_path_conflict_in_workspace,
+};
 
 impl OrchestratorEngine {
     pub(super) fn dispatch_next_work(&mut self) {
@@ -26,13 +28,14 @@ impl OrchestratorEngine {
         // 1. User interjections: wake Architect immediately whenever Architect is idle.
         if !self.pending_user_notes.is_empty() && !self.architect_in_flight {
             let notes = std::mem::take(&mut self.pending_user_notes);
-            self.spawn_architect_turn(TurnKind::ArchitectUserInterjection { notes });
+            if !self.spawn_architect_turn(TurnKind::ArchitectUserInterjection { notes }) {
+                return;
+            }
         }
 
         // 2. Initial planning turn.
         if !self.initial_plan_requested && !self.architect_in_flight {
-            self.initial_plan_requested = true;
-            self.spawn_architect_turn(TurnKind::ArchitectInitialPlan);
+            let _ = self.spawn_architect_turn(TurnKind::ArchitectInitialPlan);
             return;
         }
 
@@ -53,11 +56,13 @@ impl OrchestratorEngine {
                         MessageBadge::Info,
                         Some(task_id.clone()),
                     ));
-                    self.spawn_architect_turn(TurnKind::ArchitectIntervention {
+                    if !self.spawn_architect_turn(TurnKind::ArchitectIntervention {
                         task_id,
                         reason,
                         round,
-                    });
+                    }) {
+                        return;
+                    }
                 }
                 EscalationDecision::EscalateToUser { task_id, alert } => {
                     self.emit_tasks();
@@ -102,8 +107,7 @@ impl OrchestratorEngine {
             && !self.tasks.is_empty()
             && self.tasks.iter().all(|t| t.status == TaskStatus::Approved)
         {
-            self.set_phase(RunPhase::FinalGate);
-            self.spawn_architect_turn(TurnKind::ArchitectFinalGate);
+            let _ = self.spawn_architect_turn(TurnKind::ArchitectFinalGate);
             return;
         }
 
@@ -137,7 +141,13 @@ impl OrchestratorEngine {
             if !dependencies_satisfied(&self.tasks[idx], &self.tasks) {
                 continue;
             }
-            if has_active_path_conflict(&self.tasks[idx], &self.tasks).is_some() {
+            if has_active_path_conflict_in_workspace(
+                &self.tasks[idx],
+                &self.tasks,
+                Some(&self.cfg.workspace_dir),
+            )
+            .is_some()
+            {
                 continue;
             }
             let sel = select_slot_for_rework(
@@ -172,7 +182,13 @@ impl OrchestratorEngine {
             if !dependencies_satisfied(&self.tasks[idx], &self.tasks) {
                 continue;
             }
-            if has_active_path_conflict(&self.tasks[idx], &self.tasks).is_some() {
+            if has_active_path_conflict_in_workspace(
+                &self.tasks[idx],
+                &self.tasks,
+                Some(&self.cfg.workspace_dir),
+            )
+            .is_some()
+            {
                 if self.tasks[idx].status != TaskStatus::WaitingPathLock {
                     self.tasks[idx].status = TaskStatus::WaitingPathLock;
                     tasks_changed = true;

@@ -12,21 +12,70 @@ pub struct OpenCodeRawMessageRow {
 const ALLOWED_OPENCODE_TABLES: &[&str] = &["message", "session_message"];
 
 #[cfg(windows)]
-pub fn query_opencode_messages_readonly(db_path: &Path) -> Result<Vec<OpenCodeRawMessageRow>, String> {
+fn resolve_sqlite_utf8_path(db_path: &Path) -> Result<std::ffi::CString, String> {
+    use std::ffi::CString;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
+
+    if let Some(utf8) = db_path.to_str() {
+        return CString::new(utf8.as_bytes())
+            .map_err(|_| "OpenCode 数据库路径包含非法空字节".to_string());
+    }
+
+    let wide: Vec<u16> = db_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let needed = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+    if needed == 0 {
+        return Err("OpenCode 数据库路径包含无法转换为 UTF-8 的非法宽字符".to_string());
+    }
+    let mut buf = vec![0u16; needed as usize];
+    let written = unsafe { GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), needed) };
+    if written == 0 || (written as usize) >= buf.len() {
+        return Err("获取 OpenCode 数据库 8.3 短路径失败".to_string());
+    }
+    let short_str = String::from_utf16(&buf[..written as usize])
+        .map_err(|_| "OpenCode 数据库 8.3 短路径解码失败".to_string())?;
+    CString::new(short_str.as_bytes())
+        .map_err(|_| "OpenCode 数据库路径包含非法空字节".to_string())
+}
+
+/// 流式只读遍历 OpenCode SQLite 消息表：
+/// - 强制仅从 System32 加载 `winsqlite3.dll`，使用 `SQLITE_OPEN_READONLY` 只读打开；
+/// - SQL 层预过滤 `WHERE data IS NOT NULL AND data LIKE '%"tokens"%'`，跳过无计费字段消息；
+/// - 逐行回调 `on_row(id, session_id, time_created, data_json)`，内存峰值维持在单行 JSON 级别。
+#[cfg(windows)]
+pub fn visit_opencode_messages_readonly<F>(db_path: &Path, mut on_row: F) -> Result<(), String>
+where
+    F: FnMut(&str, &str, i64, &str),
+{
     use std::ffi::{c_char, c_int, c_void, CStr, CString};
     use windows_sys::Win32::Foundation::{FreeLibrary, HMODULE};
     use windows_sys::Win32::System::LibraryLoader::{
         GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
     };
 
+    if !db_path.is_file() {
+        return Err(format!("OpenCode 数据库文件不存在: {}", db_path.display()));
+    }
+
     const SQLITE_OK: c_int = 0;
     const SQLITE_ROW: c_int = 100;
     const SQLITE_OPEN_READONLY: c_int = 0x0000_0001;
 
-    type FnOpenV2 = unsafe extern "C" fn(*const c_char, *mut *mut c_void, c_int, *const c_char) -> c_int;
+    type FnOpenV2 =
+        unsafe extern "C" fn(*const c_char, *mut *mut c_void, c_int, *const c_char) -> c_int;
     type FnCloseV2 = unsafe extern "C" fn(*mut c_void) -> c_int;
     type FnBusyTimeout = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
-    type FnPrepareV2 = unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_void, *mut *const c_char) -> c_int;
+    type FnPrepareV2 = unsafe extern "C" fn(
+        *mut c_void,
+        *const c_char,
+        c_int,
+        *mut *mut c_void,
+        *mut *const c_char,
+    ) -> c_int;
     type FnStep = unsafe extern "C" fn(*mut c_void) -> c_int;
     type FnColText = unsafe extern "C" fn(*mut c_void, c_int) -> *const u8;
     type FnColBytes = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
@@ -39,6 +88,34 @@ pub fn query_opencode_messages_readonly(db_path: &Path) -> Result<Vec<OpenCodeRa
             if !self.0.is_null() {
                 unsafe {
                     let _ = FreeLibrary(self.0);
+                }
+            }
+        }
+    }
+
+    struct DbGuard {
+        db: *mut c_void,
+        close_fn: FnCloseV2,
+    }
+    impl Drop for DbGuard {
+        fn drop(&mut self) {
+            if !self.db.is_null() {
+                unsafe {
+                    let _ = (self.close_fn)(self.db);
+                }
+            }
+        }
+    }
+
+    struct StmtGuard {
+        stmt: *mut c_void,
+        finalize_fn: FnFinalize,
+    }
+    impl Drop for StmtGuard {
+        fn drop(&mut self) {
+            if !self.stmt.is_null() {
+                unsafe {
+                    let _ = (self.finalize_fn)(self.stmt);
                 }
             }
         }
@@ -80,9 +157,7 @@ pub fn query_opencode_messages_readonly(db_path: &Path) -> Result<Vec<OpenCodeRa
     let sqlite3_column_int64 = load_sym!("sqlite3_column_int64", FnColInt64);
     let sqlite3_finalize = load_sym!("sqlite3_finalize", FnFinalize);
 
-    let path_str = db_path.to_string_lossy();
-    let c_path = CString::new(path_str.as_bytes())
-        .map_err(|_| "OpenCode 数据库路径包含非法空字节".to_string())?;
+    let c_path = resolve_sqlite_utf8_path(db_path)?;
 
     let mut db: *mut c_void = std::ptr::null_mut();
     let open_rc = unsafe {
@@ -102,19 +177,6 @@ pub fn query_opencode_messages_readonly(db_path: &Path) -> Result<Vec<OpenCodeRa
         return Err(format!("只读打开 opencode.db 失败 (rc={open_rc})"));
     }
 
-    struct DbGuard {
-        db: *mut c_void,
-        close_fn: FnCloseV2,
-    }
-    impl Drop for DbGuard {
-        fn drop(&mut self) {
-            if !self.db.is_null() {
-                unsafe {
-                    let _ = (self.close_fn)(self.db);
-                }
-            }
-        }
-    }
     let _db_guard = DbGuard {
         db,
         close_fn: sqlite3_close_v2,
@@ -151,6 +213,10 @@ pub fn query_opencode_messages_readonly(db_path: &Path) -> Result<Vec<OpenCodeRa
     if unsafe { sqlite3_prepare_v2(db, meta_sql.as_ptr(), -1, &mut stmt, &mut tail) } == SQLITE_OK
         && !stmt.is_null()
     {
+        let _meta_guard = StmtGuard {
+            stmt,
+            finalize_fn: sqlite3_finalize,
+        };
         while unsafe { sqlite3_step(stmt) } == SQLITE_ROW {
             let name = read_text(stmt, 0);
             for &allowed in ALLOWED_OPENCODE_TABLES {
@@ -159,15 +225,13 @@ pub fn query_opencode_messages_readonly(db_path: &Path) -> Result<Vec<OpenCodeRa
                 }
             }
         }
-        unsafe {
-            let _ = sqlite3_finalize(stmt);
-        }
     }
 
-    // 2. 逐表只读提取消息行
-    let mut rows = Vec::new();
+    // 2. 逐表流式提取含 tokens 字段的消息行并即时回调
     for table in present_tables {
-        let sql_str = format!("SELECT id, session_id, time_created, data FROM {table}");
+        let sql_str = format!(
+            "SELECT id, session_id, time_created, data FROM {table} WHERE data IS NOT NULL AND data LIKE '%\"tokens\"%'"
+        );
         let Ok(c_sql) = CString::new(sql_str) else {
             continue;
         };
@@ -176,29 +240,43 @@ pub fn query_opencode_messages_readonly(db_path: &Path) -> Result<Vec<OpenCodeRa
         if rc != SQLITE_OK || qstmt.is_null() {
             continue;
         }
+        let _row_guard = StmtGuard {
+            stmt: qstmt,
+            finalize_fn: sqlite3_finalize,
+        };
         while unsafe { sqlite3_step(qstmt) } == SQLITE_ROW {
             let id = read_text(qstmt, 0);
             let session_id = read_text(qstmt, 1);
             let time_created = unsafe { sqlite3_column_int64(qstmt, 2) };
             let data_json = read_text(qstmt, 3);
             if !data_json.is_empty() {
-                rows.push(OpenCodeRawMessageRow {
-                    id,
-                    session_id,
-                    time_created,
-                    data_json,
-                });
+                on_row(&id, &session_id, time_created, &data_json);
             }
-        }
-        unsafe {
-            let _ = sqlite3_finalize(qstmt);
         }
     }
 
-    Ok(rows)
+    Ok(())
 }
 
 #[cfg(not(windows))]
-pub fn query_opencode_messages_readonly(_db_path: &Path) -> Result<Vec<OpenCodeRawMessageRow>, String> {
-    Ok(Vec::new())
+pub fn visit_opencode_messages_readonly<F>(_db_path: &Path, _on_row: F) -> Result<(), String>
+where
+    F: FnMut(&str, &str, i64, &str),
+{
+    Ok(())
+}
+
+pub fn query_opencode_messages_readonly(
+    db_path: &Path,
+) -> Result<Vec<OpenCodeRawMessageRow>, String> {
+    let mut rows = Vec::new();
+    visit_opencode_messages_readonly(db_path, |id, session_id, time_created, data_json| {
+        rows.push(OpenCodeRawMessageRow {
+            id: id.to_string(),
+            session_id: session_id.to_string(),
+            time_created,
+            data_json: data_json.to_string(),
+        });
+    })?;
+    Ok(rows)
 }

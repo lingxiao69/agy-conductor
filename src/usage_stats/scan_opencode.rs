@@ -2,7 +2,7 @@ use crate::usage_stats::cache_store::{file_fingerprint, UsageRollupCache};
 use crate::usage_stats::types::{
     file_local_date, merge_bucket, parse_local_date_str, FileDailyModelBucket,
 };
-use crate::usage_stats::win_sqlite_ro::query_opencode_messages_readonly;
+use crate::usage_stats::win_sqlite_ro::visit_opencode_messages_readonly;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -67,27 +67,28 @@ pub fn scan_opencode_usage(
 }
 
 fn parse_opencode_sqlite_db(db_path: &Path) -> Vec<FileDailyModelBucket> {
-    let Ok(rows) = query_opencode_messages_readonly(db_path) else {
-        return Vec::new();
-    };
     let fallback_date = file_local_date(db_path);
     let mut seen_ids: HashSet<String> = HashSet::new();
     let mut buckets: HashMap<(String, String), FileDailyModelBucket> = HashMap::new();
 
-    for row in rows {
-        if !row.id.is_empty() && !seen_ids.insert(row.id.clone()) {
-            continue;
-        }
-        let Ok(data) = serde_json::from_str::<Value>(&row.data_json) else {
-            continue;
-        };
-        extract_opencode_message_into_buckets(
-            &data,
-            &row.session_id,
-            Some(row.time_created),
-            fallback_date,
-            &mut buckets,
-        );
+    let visit_res =
+        visit_opencode_messages_readonly(db_path, |id, session_id, time_created, data_json| {
+            if !id.is_empty() && !seen_ids.insert(id.to_string()) {
+                return;
+            }
+            let Ok(data) = serde_json::from_str::<Value>(data_json) else {
+                return;
+            };
+            extract_opencode_message_into_buckets(
+                &data,
+                session_id,
+                Some(time_created),
+                fallback_date,
+                &mut buckets,
+            );
+        });
+    if visit_res.is_err() {
+        return Vec::new();
     }
     buckets.into_values().collect()
 }

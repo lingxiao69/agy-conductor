@@ -1,7 +1,7 @@
 use crate::agy::live_log::{LiveLogSink, LiveStreamKind, LiveTerminalLine};
 use crate::agy::runner::RealAgyRunner;
 use crate::ipc::dispatcher::{emit_ui, toast};
-use crate::ipc::run_events::spawn_engine_event_relay;
+use crate::ipc::run_events::{apply_live_line_for_generation, spawn_engine_event_relay};
 use crate::ipc::session_terminal_actions::{
     apply_session_reuse_for_slots_detailed, persist_all_active_slot_sessions, SessionReuseOutcome,
 };
@@ -132,6 +132,9 @@ pub async fn start_orchestrator_run(
         }
         guard.save_persisted_config();
 
+        guard.run_generation = guard.run_generation.wrapping_add(1);
+        let run_gen = guard.run_generation;
+
         guard.tasks.clear();
         guard.messages.clear();
         guard.terminal_lines.clear();
@@ -182,6 +185,7 @@ pub async fn start_orchestrator_run(
             live_sink,
             live_rx,
             reuse_outcome,
+            run_gen,
         )
     };
 
@@ -195,6 +199,7 @@ pub async fn start_orchestrator_run(
         live_sink,
         mut live_rx,
         reuse_outcome,
+        run_gen,
     ) = setup;
     emit_ui(&proxy, UiEvent::StateSnapshot(snap));
 
@@ -221,8 +226,8 @@ pub async fn start_orchestrator_run(
     let proxy_for_logs = proxy.clone();
     tokio::spawn(async move {
         while let Some(line) = live_rx.recv().await {
-            {
-                state_for_logs.lock().await.push_terminal_line(line.clone());
+            if !apply_live_line_for_generation(&state_for_logs, run_gen, line.clone()).await {
+                break;
             }
             emit_ui(&proxy_for_logs, UiEvent::TerminalLineAppended(line));
         }
@@ -238,7 +243,7 @@ pub async fn start_orchestrator_run(
     ));
     let engine = OrchestratorEngine::new(cfg, runner, evt_tx, ctrl_rx);
 
-    spawn_engine_event_relay(Arc::clone(&state), proxy, evt_rx);
+    spawn_engine_event_relay(Arc::clone(&state), proxy, run_gen, evt_rx);
 
     tokio::spawn(async move {
         engine.run().await;

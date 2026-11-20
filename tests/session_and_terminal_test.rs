@@ -7,7 +7,7 @@ use agy_conductor::agy::stream_parser::{
     extract_live_stream_lines, is_quota_error_text, TokenUsage,
 };
 use agy_conductor::agy::terminal::{
-    build_wt_args_for_wrappers, prepare_terminal_wrapper, TerminalLaunchOptions,
+    build_wt_args_for_wrappers, escape_wt_arg, prepare_terminal_wrapper, TerminalLaunchOptions,
 };
 use agy_conductor::billing::SlotUsageStats;
 use agy_conductor::ipc::session_terminal_actions::apply_session_reuse_for_slots;
@@ -163,13 +163,43 @@ fn terminal_wrapper_generates_utf8_no_bom_scripts_and_conflict_free_wt_args() {
     };
     let cli_wrap = prepare_terminal_wrapper(&runtime, Some(&slot), &cli_opts, &temp).unwrap();
     let wt_args = build_wt_args_for_wrappers(&[live_wrap, cli_wrap], &temp);
-    assert!(wt_args.contains(&"cmd.exe".to_string()));
-    assert!(wt_args.contains(&"/D".to_string()));
-    assert!(wt_args.contains(&"/K".to_string()));
+    assert!(
+        !wt_args.contains(&"cmd.exe".to_string())
+            && !wt_args.contains(&"/D".to_string())
+            && !wt_args.contains(&"/K".to_string()),
+        "wt.exe 必须直调 PowerShell 绕开 cmd.exe /K 陷阱: {wt_args:?}"
+    );
+    assert!(wt_args.contains(&"-NoLogo".to_string()));
+    assert!(wt_args.contains(&"-NoExit".to_string()));
+    assert!(wt_args.contains(&"-ExecutionPolicy".to_string()));
+    assert!(wt_args.contains(&"Bypass".to_string()));
+    assert!(wt_args.contains(&"-File".to_string()));
     assert!(wt_args.contains(&"split-pane".to_string()));
     assert!(
         !wt_args.iter().any(|a| a == "--model" || a == "--settings" || a == "--conversation"),
         "wt.exe 顶层参数绝不能出现裸传的 --model/--settings/--conversation: {wt_args:?}"
+    );
+
+    // 3. 验证含 `;`、`&`、`()` 及换行的目录和标题均被正确转义且保留特殊路径字符
+    let tricky_dir = temp.join("a;b & (demo)");
+    fs::create_dir_all(&tricky_dir).unwrap();
+    let mut tricky_slot = slot.clone();
+    tricky_slot.display_name = "审查;A&B (1)\n换行".to_string();
+    let tricky_wrap =
+        prepare_terminal_wrapper(&runtime, Some(&tricky_slot), &cli_opts, &tricky_dir).unwrap();
+    let tricky_args = build_wt_args_for_wrappers(&[tricky_wrap], &tricky_dir);
+    assert_eq!(escape_wt_arg("x;y\nz"), "x\\;y z");
+    assert!(
+        tricky_args
+            .iter()
+            .any(|a| a.contains("a\\;b & (demo)") && !a.contains("a;b")),
+        "工作目录中的分号必须转义为 \\; 且保留 & 与 (): {tricky_args:?}"
+    );
+    assert!(
+        tricky_args
+            .iter()
+            .any(|a| a.contains("审查\\;A&B (1) 换行") && !a.contains('\n')),
+        "标题中的分号必须转义为 \\; 且剥离换行符: {tricky_args:?}"
     );
 
     let _ = fs::remove_dir_all(&temp);

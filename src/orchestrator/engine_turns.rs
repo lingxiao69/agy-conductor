@@ -1,9 +1,9 @@
 use crate::agy::runner::{AgentTurnError, AgentTurnResponse};
 use crate::agy::stream_parser::AgentErrorKind;
-use crate::orchestrator::schemas::{ArchitectOutput, CoderOutput, PlannedTaskSpec, ReviewerOutput};
+use crate::orchestrator::schemas::{ArchitectOutput, CoderOutput, ReviewerOutput};
 use crate::orchestrator::types::{
     AgentSlot, CompletionSummary, GroupChatMessage, MessageBadge, RunPhase,
-    SlotContribution, SlotRunState, TaskItem, TaskStatus,
+    SlotContribution, SlotRunState, TaskItem,
 };
 use chrono::Local;
 use std::collections::{HashMap, HashSet};
@@ -115,59 +115,6 @@ pub fn make_slot_message(
         tool_steps: Some(resp.tool_steps),
         issues,
     }
-}
-
-pub fn merge_planned_tasks(existing: &mut Vec<TaskItem>, planned: Vec<PlannedTaskSpec>) -> usize {
-    let mut added = 0;
-    for spec in planned {
-        if let Some(prev) = existing.iter_mut().find(|t| t.task_id == spec.task_id) {
-            // Update non-approved tasks cleanly if architect revised them.
-            if prev.status != TaskStatus::Approved {
-                prev.title = spec.title;
-                prev.description = spec.description;
-                prev.owned_paths = spec.owned_paths;
-                prev.depends_on = spec.depends_on;
-                prev.preferred_coder_alias = spec.preferred_coder_alias;
-                prev.acceptance_criteria = spec.acceptance_criteria;
-                if matches!(
-                    prev.status,
-                    TaskStatus::BlockedByArch | TaskStatus::NeedsUserDecision
-                ) {
-                    prev.status = TaskStatus::Pending;
-                    prev.blocker_reason = None;
-                } else if prev.status == TaskStatus::ReworkNeeded && prev.rework_count > 0 {
-                    prev.status = TaskStatus::Pending;
-                    prev.rework_count = 0;
-                    prev.blocker_reason = None;
-                }
-            }
-        } else {
-            existing.push(TaskItem {
-                task_id: spec.task_id,
-                title: spec.title,
-                description: spec.description,
-                owned_paths: spec.owned_paths,
-                depends_on: spec.depends_on,
-                preferred_coder_alias: spec.preferred_coder_alias,
-                acceptance_criteria: spec.acceptance_criteria,
-                status: TaskStatus::Pending,
-                assigned_coder_slot_id: None,
-                assigned_coder_label: None,
-                last_coder_slot_id: None,
-                rework_count: 0,
-                arch_arbitration_count: 0,
-                coder_failure_streak: 0,
-                last_coder_summary: None,
-                last_modified_files: Vec::new(),
-                last_self_check: None,
-                last_review_issues: Vec::new(),
-                last_review_note: None,
-                blocker_reason: None,
-            });
-            added += 1;
-        }
-    }
-    added
 }
 
 pub fn parse_architect_output(resp: &AgentTurnResponse) -> Result<ArchitectOutput, String> {

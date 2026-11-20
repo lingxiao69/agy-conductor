@@ -5,6 +5,7 @@ pub mod models;
 pub mod resolver;
 pub mod runner;
 mod runner_attempt;
+mod runner_eval;
 pub mod stream_parser;
 pub mod terminal;
 pub(crate) mod terminal_scripts;

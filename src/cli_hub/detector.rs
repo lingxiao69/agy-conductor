@@ -1,6 +1,6 @@
 use crate::agy::resolver::{find_in_path, ResolvedAgyRuntime};
 use crate::agy::terminal::{
-    detect_terminal_host, launch_single_cli, TerminalHost, TerminalLaunchOptions,
+    detect_terminal_host, escape_wt_arg, launch_single_cli, TerminalHost, TerminalLaunchOptions,
 };
 use crate::agy::terminal_scripts::{b64_utf8, build_cmd_launcher_content};
 use crate::cli_hub::{CliProviderId, CliProviderStatus, CliSupportTier};
@@ -281,25 +281,38 @@ $prog = _d '{}'
     let host = detect_terminal_host();
     match &host {
         TerminalHost::WindowsTerminal(wt_path) => {
+            let escaped_title = escape_wt_arg(&title);
+            let escaped_wd = escape_wt_arg(&workdir.to_string_lossy());
+            let escaped_ps = escape_wt_arg(&ps_exe.to_string_lossy());
+            let escaped_ps1 = escape_wt_arg(&ps1_path.to_string_lossy());
             StdCommand::new(wt_path)
                 .args([
                     "new-tab",
                     "--title",
-                    &title,
+                    &escaped_title,
                     "-d",
-                    &workdir.to_string_lossy(),
-                    "cmd.exe",
-                    "/D",
-                    "/K",
-                    &cmd_path.to_string_lossy(),
+                    &escaped_wd,
+                    &escaped_ps,
+                    "-NoLogo",
+                    "-NoExit",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    &escaped_ps1,
                 ])
                 .spawn()
                 .map_err(|e| format!("拉起 Windows Terminal 失败: {e}"))?;
         }
         TerminalHost::Pwsh(_) | TerminalHost::PowerShell(_) | TerminalHost::Cmd(_) => {
-            let mut cmd = StdCommand::new("cmd.exe");
-            cmd.current_dir(&workdir)
-                .args(["/D", "/K", &cmd_path.to_string_lossy()]);
+            let mut cmd = StdCommand::new(&ps_exe);
+            cmd.current_dir(&workdir).args([
+                "-NoLogo",
+                "-NoExit",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                &ps1_path.to_string_lossy(),
+            ]);
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;

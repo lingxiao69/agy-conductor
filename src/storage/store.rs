@@ -142,14 +142,16 @@ impl AppStorage {
         fs::create_dir_all(room_dir)
             .map_err(|e| format!("确保群组目录存在失败: {e}"))?;
         let path = room_dir.join("board.jsonl");
-        let line = serde_json::to_string(message)
+        let mut buf = serde_json::to_vec(message)
             .map_err(|e| format!("序列化群消息失败: {e}"))?;
+        buf.push(b'\n');
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&path)
             .map_err(|e| format!("打开 board.jsonl 失败: {e}"))?;
-        writeln!(file, "{line}").map_err(|e| format!("写入 board.jsonl 失败: {e}"))?;
+        file.write_all(&buf)
+            .map_err(|e| format!("写入 board.jsonl 失败: {e}"))?;
         file.flush().map_err(|e| format!("刷新 board.jsonl 失败: {e}"))
     }
 
@@ -160,11 +162,19 @@ impl AppStorage {
         }
         let file = fs::File::open(&path)
             .map_err(|e| format!("读取 board.jsonl 失败: {e}"))?;
-        let reader = BufReader::new(file);
+        let mut reader = BufReader::new(file);
         let mut out = Vec::new();
-        for line in reader.lines() {
-            let line = line.map_err(|e| format!("逐行读取 board.jsonl 失败: {e}"))?;
-            let trimmed = line.trim();
+        let mut raw = Vec::new();
+        loop {
+            raw.clear();
+            let n = reader
+                .read_until(b'\n', &mut raw)
+                .map_err(|e| format!("逐行读取 board.jsonl 失败: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            let decoded = String::from_utf8_lossy(&raw);
+            let trimmed = decoded.trim();
             if trimmed.is_empty() {
                 continue;
             }

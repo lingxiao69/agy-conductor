@@ -1,5 +1,6 @@
 use crate::agy::runner::{AgentActivityUpdate, AgyRunner};
 use crate::billing::SlotUsageStats;
+use crate::orchestrator::engine_roster::ActiveSlotTurn;
 use crate::orchestrator::engine_turns::{
     make_system_message, make_user_message, phase_label_zh, FinishedTurn,
 };
@@ -78,7 +79,8 @@ pub struct OrchestratorEngine {
     pub(super) turn_done_tx: mpsc::UnboundedSender<FinishedTurn>,
     turn_done_rx: mpsc::UnboundedReceiver<FinishedTurn>,
     pub(super) cancel_tx: watch::Sender<bool>,
-    pub(super) slot_cancel_txs: HashMap<String, (u64, watch::Sender<bool>)>,
+    pub(super) slot_cancel_txs: HashMap<String, ActiveSlotTurn>,
+    snapshot_tx: Option<watch::Sender<Option<RoomSnapshot>>>,
     pub(super) usage_ledgers: HashMap<String, SlotBillingLedger>,
     pub(super) turn_seq: u64,
     pub(super) active_architect_turn: Option<u64>,
@@ -114,6 +116,7 @@ impl OrchestratorEngine {
         let (activity_tx, activity_rx) = mpsc::unbounded_channel();
         let (turn_done_tx, turn_done_rx) = mpsc::unbounded_channel();
         let (cancel_tx, _) = watch::channel(false);
+        let (snapshot_tx, _) = watch::channel(None);
         let shared_build_lock = workspace_has_shared_build_lock(&cfg.workspace_dir);
         let board_poll_offset = std::fs::metadata(cfg.room_dir.join("board.jsonl"))
             .map(|m| m.len())
@@ -133,6 +136,7 @@ impl OrchestratorEngine {
             turn_done_rx,
             cancel_tx,
             slot_cancel_txs: HashMap::new(),
+            snapshot_tx: Some(snapshot_tx),
             usage_ledgers: HashMap::new(),
             turn_seq: 0,
             active_architect_turn: None,
@@ -160,6 +164,23 @@ impl OrchestratorEngine {
     }
 
     pub async fn run(mut self) {
+        let writer_handle = self.snapshot_tx.as_ref().map(|tx| {
+            let mut rx = tx.subscribe();
+            let room_dir = self.cfg.room_dir.clone();
+            tokio::spawn(async move {
+                while rx.changed().await.is_ok() {
+                    let latest = rx.borrow_and_update().clone();
+                    if let Some(snap) = latest {
+                        let dir = room_dir.clone();
+                        let _ = tokio::task::spawn_blocking(move || {
+                            let _ = AppStorage::save_room_snapshot(&dir, &snap);
+                        })
+                        .await;
+                    }
+                }
+            })
+        });
+
         self.set_phase(RunPhase::Planning);
         self.emit_chat(make_system_message(
             format!(
@@ -208,6 +229,18 @@ impl OrchestratorEngine {
                 else => break,
             }
         }
+
+        // 先优雅收束后台合并写协程，再显式执行一次终态异步刷盘并等待完成，确保零竞态且终态 100% 落盘。
+        drop(self.snapshot_tx.take());
+        if let Some(handle) = writer_handle {
+            let _ = handle.await;
+        }
+        let final_snap = self.build_room_snapshot();
+        let final_dir = self.cfg.room_dir.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let _ = AppStorage::save_room_snapshot(&final_dir, &final_snap);
+        })
+        .await;
     }
 
     fn poll_external_board_messages(&mut self) {
@@ -225,17 +258,18 @@ impl OrchestratorEngine {
             return;
         }
         let mut reader = BufReader::new(file);
-        let mut line = String::new();
+        let mut raw = Vec::new();
         loop {
-            line.clear();
-            match reader.read_line(&mut line) {
+            raw.clear();
+            match reader.read_until(b'\n', &mut raw) {
                 Ok(0) => break,
                 Ok(n) => {
-                    if !line.ends_with('\n') {
+                    if !raw.ends_with(b"\n") {
                         break;
                     }
                     self.board_poll_offset = self.board_poll_offset.saturating_add(n as u64);
-                    let trimmed = line.trim();
+                    let decoded = String::from_utf8_lossy(&raw);
+                    let trimmed = decoded.trim();
                     if trimmed.is_empty() {
                         continue;
                     }
@@ -299,9 +333,9 @@ impl OrchestratorEngine {
         });
     }
 
-    pub(super) fn persist_snapshot(&self) {
+    fn build_room_snapshot(&self) -> RoomSnapshot {
         let (total_tokens, total_cost_usd, slot_usages) = self.team_usage_totals();
-        let snap = RoomSnapshot {
+        RoomSnapshot {
             room_id: self.cfg.room_id.clone(),
             workspace: self.cfg.workspace_dir.to_string_lossy().to_string(),
             goal: self.cfg.goal.clone(),
@@ -311,8 +345,13 @@ impl OrchestratorEngine {
             total_tokens,
             total_cost_usd,
             slot_usages,
-        };
-        let _ = AppStorage::save_room_snapshot(&self.cfg.room_dir, &snap);
+        }
+    }
+
+    pub(super) fn persist_snapshot(&self) {
+        if let Some(ref tx) = self.snapshot_tx {
+            let _ = tx.send(Some(self.build_room_snapshot()));
+        }
     }
 
     fn handle_activity(&mut self, act: AgentActivityUpdate) {
@@ -381,8 +420,8 @@ impl OrchestratorEngine {
             }
             EngineControl::Stop => {
                 let _ = self.cancel_tx.send(true);
-                for (_, tx) in self.slot_cancel_txs.drain().map(|(_, v)| v) {
-                    let _ = tx.send(true);
+                for active in self.slot_cancel_txs.drain().map(|(_, v)| v) {
+                    let _ = active.cancel_tx.send(true);
                 }
                 self.settle_all_in_flight_usages();
                 self.set_phase(RunPhase::Stopped);
@@ -422,27 +461,10 @@ impl OrchestratorEngine {
                 self.apply_updated_slots(updated);
             }
             EngineControl::SetSlotCliAttached { slot_id } => {
-                if let Some(slot) = self.slots.iter_mut().find(|s| s.slot_id == slot_id) {
-                    slot.state = SlotRunState::ExternalCliAttached;
-                    slot.current_activity = Some("已由外部 CLI 接管".to_string());
-                    let snap = slot.clone();
-                    self.emit_slot_state(&snap);
-                }
+                self.attach_slot_external_cli(&slot_id);
             }
             EngineControl::ReleaseSlotCliAttached { slot_id } => {
-                if let Some(slot) = self.slots.iter_mut().find(|s| s.slot_id == slot_id) {
-                    if slot.state == SlotRunState::ExternalCliAttached {
-                        slot.state = SlotRunState::Idle;
-                        slot.current_activity = None;
-                        let snap = slot.clone();
-                        self.emit_slot_state(&snap);
-                        self.emit_chat(make_system_message(
-                            format!("{} 已结束外部 CLI 接管，回到自动编队协同。", snap.display_name),
-                            MessageBadge::Info,
-                            None,
-                        ));
-                    }
-                }
+                self.release_slot_external_cli(&slot_id);
             }
         }
     }

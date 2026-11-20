@@ -1,6 +1,5 @@
 use crate::agy::resolver::run_doctor;
 use crate::agy::terminal::open_folder_in_explorer;
-use crate::billing::SlotUsageStats;
 use crate::ipc::cli_hub_actions::{
     handle_launch_provider_external_cli, handle_refresh_cli_providers, handle_select_cli_provider,
 };
@@ -19,7 +18,7 @@ use crate::ipc::state::SharedAppState;
 use crate::ipc::usage_actions::{handle_export_report_markdown, handle_load_cli_usage_stats};
 use crate::ipc::{AppCustomEvent, UiCommand, UiEvent};
 use crate::orchestrator::engine::EngineControl;
-use crate::orchestrator::types::{RunPhase, SlotRunState};
+use crate::orchestrator::types::SlotRunState;
 use crate::usage_stats::UsageRange;
 use std::path::PathBuf;
 use tao::event_loop::EventLoopProxy;
@@ -247,24 +246,7 @@ pub async fn dispatch_ui_command(
         UiCommand::ResetRun => {
             let (snap, last_ws) = {
                 let mut guard = state.lock().await;
-                if let Some(tx) = guard.active_engine_tx.take() {
-                    let _ = tx.send(EngineControl::Stop);
-                }
-                guard.phase = RunPhase::Idle;
-                guard.tasks.clear();
-                guard.messages.clear();
-                guard.terminal_lines.clear();
-                guard.active_blocker = None;
-                guard.live_log_sink = None;
-                guard.completion = None;
-                for slot in &mut guard.config.slots {
-                    slot.state = SlotRunState::Idle;
-                    slot.current_activity = None;
-                    slot.conversation_id = None;
-                    slot.session_reused = false;
-                    slot.consecutive_failures = 0;
-                    slot.usage = SlotUsageStats::for_model(&slot.model_id);
-                }
+                guard.reset_run_state();
                 (guard.snapshot(), guard.config.last_workspace.clone())
             };
             emit_ui(&proxy, UiEvent::StateSnapshot(snap));
@@ -308,18 +290,20 @@ pub async fn dispatch_ui_command(
                     .iter_mut()
                     .find(|s| s.slot_id == slot_id)
                 {
-                    s.state = SlotRunState::Idle;
-                    s.current_activity = None;
-                    found = Some(s.clone());
+                    if s.state == SlotRunState::ExternalCliAttached {
+                        s.state = SlotRunState::Idle;
+                        s.current_activity = None;
+                        found = Some(s.clone());
+                    }
                 }
                 (guard.active_engine_tx.clone(), found)
             };
-            if let Some(tx) = tx {
-                let _ = tx.send(EngineControl::ReleaseSlotCliAttached {
-                    slot_id: slot_id.clone(),
-                });
-            }
             if let Some(s) = updated_slot {
+                if let Some(tx) = tx {
+                    let _ = tx.send(EngineControl::ReleaseSlotCliAttached {
+                        slot_id: slot_id.clone(),
+                    });
+                }
                 emit_ui(
                     &proxy,
                     UiEvent::SlotStateChanged {

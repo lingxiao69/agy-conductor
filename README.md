@@ -5,6 +5,7 @@
 **轻量级原生多模型自动研发协同台**  
 让「总架构师 · 编码程序员 · 代码审查员」在本地组成你的全自动 AI 研发团队
 
+[![Release](https://img.shields.io/github/v/release/lingxiao69/agy-conductor?color=0369a1&label=Release)](https://github.com/lingxiao69/agy-conductor/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-0f766e.svg)](./LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-2021_Edition-b45309.svg)](./Cargo.toml)
 [![Platform](https://img.shields.io/badge/Platform-Windows_Native_(tao_%2B_wry)-1d4ed8.svg)](#快速开始)
@@ -88,7 +89,11 @@ flowchart LR
 - **编译环境**：[Rust](https://rustup.rs/) `1.78+`（推荐 `x86_64-pc-windows-msvc` 工具链）
 - **CLI 运行时**：本机已安装并登录 `agy`（Antigravity CLI，支持官方模式或本地 Gateway 模式）；安装 Codex / Claude Code / OpenCode 后可在左侧导航坞与用量看板中自动识别。
 
-### 源码克隆与编译运行
+### 方式一：直接下载免安装单文件版（推荐）
+
+前往 [GitHub Releases](https://github.com/lingxiao69/agy-conductor/releases) 下载最新版本的 Windows 免安装单文件可执行程序（`agy-conductor-v0.1.0-windows-x64.exe`），无需安装 Rust 编译环境，双击即可运行（也可任意重命名为 `轻舟AgyConductor.exe` 放在桌面或工具目录）。
+
+### 方式二：源码克隆与编译运行
 
 ```powershell
 # 1. 克隆仓库

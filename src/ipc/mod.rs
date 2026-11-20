@@ -3,7 +3,7 @@ pub mod dispatcher;
 mod env_actions;
 mod history_preset_actions;
 mod run_actions;
-mod run_events;
+pub mod run_events;
 pub mod session_terminal_actions;
 pub mod state;
 mod usage_actions;

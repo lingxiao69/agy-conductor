@@ -71,8 +71,16 @@ pub struct TerminalLaunchOptions {
 pub struct GeneratedTerminalWrapper {
     pub cmd_path: PathBuf,
     pub ps1_path: PathBuf,
+    pub ps_exe: PathBuf,
     pub title: String,
     pub log_path: Option<PathBuf>,
+}
+
+/// 转义传给 Windows Terminal (`wt.exe`) 单个参数的特殊控制符：
+/// - `;` 在 `wt.exe` 中会被视作多窗格子命令分隔符，必须转义为 `\;`；
+/// - 清理换行与回车符为空格，防止破坏窗口标题或命令行解析。
+pub fn escape_wt_arg(raw: &str) -> String {
+    raw.replace(['\r', '\n'], " ").replace(';', "\\;")
 }
 
 fn build_mcp_servers_value(room_dir: &Path, alias: &str) -> Result<serde_json::Value, String> {
@@ -230,18 +238,21 @@ pub fn prepare_terminal_wrapper(
     Ok(GeneratedTerminalWrapper {
         cmd_path,
         ps1_path,
+        ps_exe,
         title,
         log_path,
     })
 }
 
-/// 构造传给 `wt.exe` 的安全参数序列（绝不向 `wt.exe` 直接裸传 `--model` / `--settings`）。
+/// 构造传给 `wt.exe` 的安全参数序列：
+/// - 绝不向 `wt.exe` 直接裸传 `--model` / `--settings`；
+/// - 统一转义参数中的 `;` 为 `\;` 并直接调用 PowerShell `-File`，彻底绕开 `cmd.exe /K` 对 `&` / `|` / `()` 的二次解析。
 pub fn build_wt_args_for_wrappers(
     wrappers: &[GeneratedTerminalWrapper],
     workdir: &Path,
 ) -> Vec<String> {
     let mut wt_args = Vec::new();
-    let wd = workdir.to_string_lossy().to_string();
+    let wd = escape_wt_arg(&workdir.to_string_lossy());
     for (idx, w) in wrappers.iter().enumerate() {
         if idx == 0 {
             wt_args.push("new-tab".to_string());
@@ -251,13 +262,16 @@ pub fn build_wt_args_for_wrappers(
             wt_args.push(if idx % 2 == 1 { "-V" } else { "-H" }.to_string());
         }
         wt_args.push("--title".to_string());
-        wt_args.push(w.title.clone());
+        wt_args.push(escape_wt_arg(&w.title));
         wt_args.push("-d".to_string());
         wt_args.push(wd.clone());
-        wt_args.push("cmd.exe".to_string());
-        wt_args.push("/D".to_string());
-        wt_args.push("/K".to_string());
-        wt_args.push(w.cmd_path.to_string_lossy().to_string());
+        wt_args.push(escape_wt_arg(&w.ps_exe.to_string_lossy()));
+        wt_args.push("-NoLogo".to_string());
+        wt_args.push("-NoExit".to_string());
+        wt_args.push("-ExecutionPolicy".to_string());
+        wt_args.push("Bypass".to_string());
+        wt_args.push("-File".to_string());
+        wt_args.push(escape_wt_arg(&w.ps1_path.to_string_lossy()));
     }
     wt_args
 }
@@ -341,9 +355,15 @@ fn spawn_wrapper_on_host(
                 .map_err(|e| format!("拉起 Windows Terminal 失败: {e}"))?;
         }
         TerminalHost::Pwsh(_) | TerminalHost::PowerShell(_) | TerminalHost::Cmd(_) => {
-            let mut cmd = Command::new("cmd.exe");
-            cmd.current_dir(workdir)
-                .args(["/D", "/K", &wrapper.cmd_path.to_string_lossy()]);
+            let mut cmd = Command::new(&wrapper.ps_exe);
+            cmd.current_dir(workdir).args([
+                "-NoLogo",
+                "-NoExit",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                &wrapper.ps1_path.to_string_lossy(),
+            ]);
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
