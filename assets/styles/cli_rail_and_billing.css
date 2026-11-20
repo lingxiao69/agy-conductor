@@ -1,0 +1,424 @@
+/* V3 Multi-CLI Leftmost Navigation Rail & Per-Slot Billing Meter */
+
+.workspace-grid {
+  grid-template-columns: 66px 292px minmax(380px, 1fr) clamp(330px, 27vw, 384px);
+}
+
+.workspace-grid.right-collapsed {
+  grid-template-columns: 66px 292px minmax(380px, 1fr) 0px;
+}
+
+.workspace-grid.provider-preview-mode {
+  grid-template-columns: 66px minmax(420px, 1fr);
+}
+
+.workspace-grid.provider-preview-mode .pane-left,
+.workspace-grid.provider-preview-mode .pane-center,
+.workspace-grid.provider-preview-mode .pane-right {
+  display: none !important;
+}
+
+/* Leftmost Multi-CLI Navigation Rail */
+.cli-nav-rail {
+  background: #F1EFE9;
+  border-right: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 6px;
+  gap: 8px;
+  min-height: 0;
+  user-select: none;
+}
+
+.cli-rail-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.cli-rail-btn {
+  position: relative;
+  width: 52px;
+  padding: 8px 4px 6px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.cli-rail-btn:hover {
+  background: #E8E5DC;
+  color: var(--text-primary);
+}
+
+.cli-rail-btn.active {
+  background: var(--bg-surface);
+  color: var(--accent-jade);
+  border-color: var(--border-hairline);
+  box-shadow: 0 2px 6px rgba(24, 28, 32, 0.06);
+}
+
+.cli-rail-btn.active::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent-jade);
+}
+
+.cli-rail-icon {
+  width: 21px;
+  height: 21px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.cli-rail-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cli-rail-dot {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #C5C1B7;
+}
+
+.cli-rail-dot.installed {
+  background: #2D8A6B;
+}
+
+.cli-rail-dot.running {
+  background: #2D8A6B;
+  box-shadow: 0 0 0 3px rgba(45, 138, 107, 0.22);
+}
+
+.cli-rail-spacer {
+  flex: 1;
+}
+
+.cli-rail-refresh {
+  width: 40px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hairline);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.cli-rail-refresh:hover {
+  background: var(--bg-surface);
+  color: var(--accent-jade);
+  border-color: var(--accent-jade);
+}
+
+/* Non-agy Provider Preview Stage */
+.cli-provider-stage {
+  background: linear-gradient(180deg, #FBFAF7 0%, #FFFFFF 100%);
+  overflow-y: auto;
+  padding: 28px 32px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.cli-provider-card {
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 26px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cli-provider-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cli-provider-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cli-provider-emblem {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--accent-jade-soft);
+  color: var(--accent-jade);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(45, 106, 91, 0.16);
+}
+
+.cli-provider-emblem svg {
+  width: 26px;
+  height: 26px;
+}
+
+.cli-provider-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cli-provider-tagline {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.cli-status-pill {
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cli-status-pill.installed {
+  background: var(--state-ok-bg);
+  color: var(--state-ok-fg);
+}
+
+.cli-status-pill.missing {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+}
+
+.cli-running-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--accent-jade-soft);
+  border: 1px solid rgba(45, 106, 91, 0.22);
+  color: var(--accent-jade);
+  font-size: 12.5px;
+}
+
+.cli-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cli-meta-box {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cli-meta-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.cli-meta-val {
+  font-size: 12.5px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.cli-provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.cli-roadmap-note {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: #FAF8F3;
+  border: 1px dashed var(--border-strong);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Slot History Session Micro-Badge */
+.slot-session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  line-height: 1.3;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slot-session-chip.is-reused {
+  background: var(--accent-jade-soft);
+  color: var(--accent-jade);
+  border: 1px solid rgba(45, 106, 91, 0.18);
+}
+
+.slot-session-chip.is-fresh {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hairline);
+}
+
+.slot-session-chip.is-unhealthy {
+  background: var(--state-warn-bg);
+  color: var(--state-warn-fg);
+  border: 1px solid rgba(154, 103, 0, 0.22);
+}
+
+.session-source-badge.unhealthy {
+  background: var(--state-warn-bg);
+  color: var(--state-warn-fg);
+}
+
+/* Per-Slot Minimalist Token & USD Readout (No Progress Bar) */
+.slot-billing-meter {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.slot-billing-nums {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.slot-token-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slot-billing-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-jade);
+  flex-shrink: 0;
+  animation: billingPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes billingPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.slot-cost-badge {
+  font-weight: 600;
+  color: var(--accent-jade);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Left Roster Bottom Team Total Billing Bar */
+.roster-billing-footer {
+  flex-shrink: 0;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border-hairline);
+  background: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-billing-label {
+  color: var(--text-secondary);
+}
+
+.roster-billing-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.roster-billing-usd {
+  color: var(--accent-jade);
+}
+
+/* Topbar Cost Pill (Clickable entry to Analytics) */
+.topbar-cost-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-jade-soft);
+  border: 1px solid rgba(45, 106, 91, 0.2);
+  color: var(--accent-jade);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.topbar-cost-pill:hover {
+  background: #DCECE6;
+  border-color: rgba(45, 106, 91, 0.36);
+}

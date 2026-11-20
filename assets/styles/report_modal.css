@@ -1,0 +1,219 @@
+/* V4 Compact Scrollable In-App Report / Blocker Modal & Safe Markdown Typography */
+
+#report-modal-overlay {
+  z-index: 70;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.report-modal-card {
+  width: min(640px, 90vw);
+  max-height: min(74vh, 640px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 22px 56px rgba(24, 28, 32, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.report-modal-header {
+  flex-shrink: 0;
+  padding: 16px 22px 13px;
+  background: #FAF9F5;
+  border-bottom: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.report-modal-card.is-blocker .report-modal-header {
+  background: #FDF8EC;
+  border-bottom-color: #EFE0BE;
+}
+
+.report-modal-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-modal-title-group {
+  min-width: 0;
+}
+
+.report-modal-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--state-ok-bg);
+  color: var(--state-ok-fg);
+  margin-bottom: 4px;
+}
+
+.report-modal-card.is-blocker .report-modal-badge {
+  background: var(--state-warn-bg);
+  color: var(--state-warn-fg);
+}
+
+.report-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.report-metric-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.report-metric-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-metric-pill strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.report-modal-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 22px;
+  background: var(--bg-surface);
+}
+
+.report-modal-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.report-modal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(94, 102, 112, 0.28);
+  border-radius: 999px;
+}
+
+.report-modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(94, 102, 112, 0.46);
+}
+
+.report-modal-footer {
+  flex-shrink: 0;
+  padding: 12px 22px;
+  background: #FAF9F6;
+  border-top: 1px solid var(--border-hairline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.report-modal-footer-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Safe Rendered Markdown Typography */
+.md-content {
+  font-size: 13px;
+  line-height: 1.68;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.md-content > :first-child { margin-top: 0; }
+.md-content > :last-child { margin-bottom: 0; }
+
+.md-content h2,
+.md-content h3,
+.md-content h4 {
+  margin: 14px 0 6px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.md-content h2 {
+  font-size: 15px;
+  border-bottom: 1px solid var(--border-hairline);
+  padding-bottom: 4px;
+}
+
+.md-content h3 {
+  font-size: 14px;
+  color: var(--accent-jade);
+}
+
+.md-content h4 { font-size: 13px; }
+.md-content p { margin: 7px 0; }
+
+.md-content ul,
+.md-content ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.md-content li { margin: 3px 0; }
+
+.md-content code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #2B4C59;
+}
+
+.md-content pre {
+  margin: 9px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #F6F5F0;
+  border: 1px solid var(--border-hairline);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.md-content pre code {
+  padding: 0;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.md-content blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--accent-jade);
+  background: #F8F7F3;
+  color: var(--text-secondary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.md-content hr {
+  border: none;
+  border-top: 1px solid var(--border-hairline);
+  margin: 12px 0;
+}

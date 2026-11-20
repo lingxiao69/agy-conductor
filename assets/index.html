@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>轻舟 AgyConductor</title>
+  <link rel="stylesheet" href="./styles/tokens.css" />
+  <link rel="stylesheet" href="./styles/layout.css" />
+  <link rel="stylesheet" href="./styles/controls.css" />
+  <link rel="stylesheet" href="./styles/components.css" />
+  <link rel="stylesheet" href="./styles/chat_and_modals.css" />
+  <link rel="stylesheet" href="./styles/history_and_presets.css" />
+  <link rel="stylesheet" href="./styles/terminal_and_sessions.css" />
+  <link rel="stylesheet" href="./styles/cli_rail_and_billing.css" />
+  <link rel="stylesheet" href="./styles/report_modal.css" />
+  <link rel="stylesheet" href="./styles/modals_and_analytics.css" />
+  <link rel="stylesheet" href="./styles/live_side_pane.css" />
+</head>
+<body>
+  <div id="app-shell" class="app-shell">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="brand">
+          <span class="brand-seal">轻舟</span>
+          <span class="brand-name">AgyConductor</span>
+        </div>
+        <div class="workspace-pill" id="topbar-workspace" title="点击切换项目目录">
+          <span class="pill-icon">📁</span>
+          <span class="workspace-path" id="topbar-workspace-path">尚未选择项目目录</span>
+          <button class="btn-link" id="btn-pick-workspace-top" type="button">切换</button>
+        </div>
+      </div>
+
+      <div class="topbar-center">
+        <div class="phase-pill" id="topbar-phase-pill">
+          <span class="status-dot idle" id="topbar-phase-dot"></span>
+          <span id="topbar-phase-text">待命</span>
+        </div>
+        <button type="button" class="topbar-cost-pill mono hidden" id="topbar-cost-pill" title="点击查看本地多 CLI 用量统计中心"></button>
+      </div>
+
+      <div class="topbar-right">
+        <button class="btn-subtle" id="btn-open-history" type="button" title="查看过往项目运行记录与导出报告">
+          <svg class="btn-svg-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.5" />
+            <path d="M8 5v3.2l2.1 1.3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>历史记录</span>
+        </button>
+        <button class="btn-subtle" id="btn-open-maintenance" type="button" title="检查与更新 agy">
+          <span id="topbar-agy-version">agy 检测中</span>
+          <span class="btn-chip-tag">更新</span>
+        </button>
+        <button class="btn-subtle" id="btn-open-cli-modal" type="button" title="打开内置实时 AI 进程终端或拉起外部 CLI">
+          <span class="mono">&gt;_</span> 终端
+        </button>
+        <button class="btn-icon" id="btn-toggle-right-pane" type="button" title="收起/展开右侧任务与实时 AI 视窗">
+          ◫
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Multi-CLI & Three-Column Workspace -->
+    <main class="workspace-grid" id="workspace-grid">
+      <!-- Far-Left Multi-CLI Navigation Rail -->
+      <nav class="cli-nav-rail" id="cli-nav-rail" aria-label="AI CLI 引擎切换"></nav>
+
+      <!-- Left Roster Column -->
+      <aside class="pane pane-left">
+        <div class="pane-header">
+          <div class="pane-title-group">
+            <h2 class="pane-title">团队编队</h2>
+            <span class="pane-sub-count" id="roster-count">0</span>
+          </div>
+          <div class="pane-actions">
+            <button class="btn-ghost-sm" id="btn-reset-roster" type="button" title="按本机模型重置推荐编队">重置</button>
+            <button class="btn-jade-soft-sm" id="btn-add-slot" type="button">+ 添加</button>
+          </div>
+        </div>
+
+        <div class="roster-presets-bar" id="roster-presets-bar"></div>
+
+        <div class="strategy-bar">
+          <label class="strategy-label" for="select-dispatch-mode">同角色策略</label>
+          <select id="select-dispatch-mode" class="select-clean">
+            <option value="PriorityWithOverflow">优先级优先 + 并行溢出</option>
+            <option value="StrictPrimaryFailover">严格主备容灾</option>
+          </select>
+        </div>
+
+        <div class="roster-list" id="roster-list"></div>
+        <div class="roster-billing-footer" id="roster-billing-footer"></div>
+      </aside>
+
+      <!-- Center Group Chat / Setup Column -->
+      <section class="pane pane-center">
+        <!-- Empty State Goal Setup Card -->
+        <div class="setup-stage" id="setup-stage">
+          <div class="setup-card">
+            <div class="setup-header">
+              <div class="setup-badge">多模型无人值守研发闭环</div>
+              <h1 class="setup-title">设定一个长期目标，其余交给编队协作</h1>
+              <p class="setup-subtitle">
+                总架构师自动勘察拆解任务 → 程序员按数字优先级编码自测 → 代码审查员独立核验与打回返工 → 验收通过置顶弹窗提醒。
+              </p>
+            </div>
+
+            <div class="form-field">
+              <label class="field-label">目标项目目录</label>
+              <div class="workspace-input-row">
+                <input
+                  id="input-workspace"
+                  class="input-clean mono"
+                  type="text"
+                  placeholder="请选择或输入本地项目绝对路径，如 D:\work\my-app"
+                />
+                <button id="btn-pick-workspace-form" class="btn-secondary" type="button">选择目录</button>
+              </div>
+            </div>
+
+            <div class="session-resume-panel hidden" id="session-resume-panel"></div>
+
+            <div class="form-field">
+              <label class="field-label" for="input-goal">长期研发目标</label>
+              <textarea
+                id="input-goal"
+                class="textarea-clean"
+                rows="5"
+                placeholder="例如：为当前项目实现高并发订单对账模块，补齐边界冲正逻辑、错误恢复与完整单元测试，确保所有构建和检查零告警通过..."
+              ></textarea>
+            </div>
+
+            <div class="form-field">
+              <label class="field-label">执行授权级别（请显式确认）</label>
+              <div class="permission-grid">
+                <label class="radio-card" id="perm-card-accept">
+                  <input type="radio" name="permission_mode" value="AcceptEdits" checked />
+                  <div class="radio-card-body">
+                    <div class="radio-card-title">文件编辑自动放行</div>
+                    <div class="radio-card-desc mono">--mode accept-edits · 平衡安全与效率</div>
+                  </div>
+                </label>
+                <label class="radio-card" id="perm-card-skip">
+                  <input type="radio" name="permission_mode" value="DangerouslySkipPermissions" />
+                  <div class="radio-card-body">
+                    <div class="radio-card-title">无人值守全自动测试与构建</div>
+                    <div class="radio-card-desc mono">--dangerously-skip-permissions · 自动执行测试命令</div>
+                  </div>
+                </label>
+              </div>
+              <label class="consent-row hidden" id="danger-consent-row">
+                <input type="checkbox" id="chk-danger-consent" />
+                <span>我已了解并同意在所选项目目录内自动放行命令与测试执行。</span>
+              </label>
+            </div>
+
+            <div class="advanced-row">
+              <label class="inline-check">
+                <input type="checkbox" id="chk-sandbox" />
+                <span>开启终端沙盒 (<span class="mono">--sandbox</span>)</span>
+              </label>
+              <label class="inline-num">
+                <span>单任务最大打回轮次</span>
+                <input id="input-max-rework" type="number" min="1" max="20" value="8" class="input-mini" />
+              </label>
+            </div>
+
+            <div class="setup-footer">
+              <button id="btn-start-goal" class="btn-primary-lg" type="button">启动全自动研发</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Chat Stage -->
+        <div class="chat-stage hidden" id="chat-stage">
+          <div class="goal-banner" id="goal-banner">
+            <div class="goal-banner-main">
+              <span class="goal-banner-label">长期目标</span>
+              <span class="goal-banner-text" id="goal-banner-text"></span>
+            </div>
+            <div class="goal-banner-actions">
+              <button class="btn-link" id="btn-toggle-goal-detail" type="button">展开</button>
+              <button class="btn-link hidden" id="btn-new-goal" type="button">新建目标</button>
+            </div>
+          </div>
+
+          <div class="completion-banner hidden" id="completion-banner"></div>
+
+          <div class="blocker-banner hidden" id="blocker-banner"></div>
+
+          <div class="chat-stream" id="chat-stream"></div>
+
+          <div class="live-activity-bar hidden" id="live-activity-bar"></div>
+
+          <form class="chat-composer" id="chat-composer">
+            <input
+              id="input-user-message"
+              class="composer-input"
+              type="text"
+              placeholder="在此补充指导意见，或 @某个角色 插话（当前轮次结束后优先投递总架构师微调）..."
+            />
+            <button class="btn-primary" id="btn-send-user-message" type="submit">发送</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Right Task Progress & Always-On Live AI Side Pane -->
+      <aside class="pane pane-right" id="pane-right">
+        <section class="pane-right-tasks is-empty" id="pane-right-tasks">
+          <div class="pane-header pane-header-compact">
+            <div class="pane-title-group">
+              <h2 class="pane-title">子任务进度</h2>
+              <span class="pane-sub-count" id="task-progress-ratio">0/0</span>
+            </div>
+          </div>
+          <div class="task-list" id="task-list">
+            <div class="empty-hint">启动长期目标后，总架构师拆解的子任务与审查返工进度将在此清晰呈现。</div>
+          </div>
+        </section>
+
+        <section class="live-side-pane" id="live-side-pane" aria-label="实时 AI 视窗">
+          <div class="live-side-header">
+            <div class="live-side-top-row">
+              <div class="live-side-title-group">
+                <span class="live-side-dot idle" id="live-side-dot" aria-hidden="true"></span>
+                <h3 class="live-side-title">实时 AI 视窗</h3>
+                <span class="live-side-alias mono" id="live-side-alias">@待命</span>
+              </div>
+              <div class="live-side-controls">
+                <button
+                  type="button"
+                  class="live-follow-pill auto"
+                  id="btn-live-follow-toggle"
+                  title="当前自动展示正在干活的角色 AI"
+                >● 自动跟随</button>
+                <button
+                  type="button"
+                  class="live-expand-btn"
+                  id="btn-live-expand-drawer"
+                  title="在全宽大窗中展开实时 AI 终端"
+                  aria-label="展开实时终端抽屉"
+                >⤢</button>
+              </div>
+            </div>
+            <div class="live-role-tabs" id="live-role-tabs" role="tablist" aria-label="切换查看角色"></div>
+          </div>
+          <div class="live-role-status-strip" id="live-role-status-strip"></div>
+          <div class="live-side-viewport" id="live-side-viewport"></div>
+        </section>
+
+        <div class="run-controls hidden" id="run-controls">
+          <button class="btn-secondary flex-1" id="btn-pause-resume" type="button">暂停协同</button>
+          <button class="btn-danger-soft" id="btn-stop-run" type="button">停止</button>
+        </div>
+      </aside>
+
+      <!-- Non-agy CLI Provider Stage -->
+      <section class="cli-provider-stage hidden" id="cli-provider-stage" aria-live="polite"></section>
+
+      <!-- Multi-CLI Local Usage Analytics Stage -->
+      <section class="usage-analytics-stage hidden" id="usage-analytics-stage" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <!-- Slide-over Drawer: Project Run History -->
+  <div class="overlay hidden" id="history-drawer" aria-hidden="true">
+    <div class="drawer-panel history-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="history-drawer-title">
+      <div class="drawer-header history-drawer-header">
+        <div>
+          <h3 class="drawer-title" id="history-drawer-title">历史项目记录</h3>
+          <p class="drawer-subtitle">回溯过往长期目标、子任务验收状态与群聊对话，支持导出 Markdown 报告</p>
+        </div>
+        <button class="btn-icon" id="btn-close-history" type="button" title="关闭历史记录抽屉">✕</button>
+      </div>
+      <div class="history-drawer-layout">
+        <div class="history-sidebar">
+          <div class="history-search-wrap">
+            <input
+              id="history-search-input"
+              class="input-clean history-search-input"
+              type="search"
+              placeholder="筛选目标、目录、阶段..."
+            />
+            <span class="pane-sub-count" id="history-count-badge">0</span>
+          </div>
+          <div class="history-room-list" id="history-room-list"></div>
+        </div>
+        <div class="history-detail-pane" id="history-detail-pane"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide-over Drawer: agy Maintenance & Update -->
+  <div class="overlay hidden" id="maintenance-drawer">
+    <div class="drawer-panel">
+      <div class="drawer-header">
+        <div>
+          <h3 class="drawer-title">agy 环境与更新维护</h3>
+          <p class="drawer-subtitle">实时检测本地入口、主动升级 CLI 并重新同步网关模型</p>
+        </div>
+        <button class="btn-icon" id="btn-close-maintenance" type="button">✕</button>
+      </div>
+      <div class="drawer-body">
+        <div class="info-grid" id="maintenance-info-grid"></div>
+        <div class="source-toggle-row">
+          <span>默认模型来源偏好</span>
+          <div class="segmented" id="gateway-pref-toggle">
+            <button type="button" data-gw="true" class="seg-btn active">Gateway 优先</button>
+            <button type="button" data-gw="false" class="seg-btn">官方直连优先</button>
+          </div>
+        </div>
+        <div class="drawer-action-row">
+          <button class="btn-primary" id="btn-run-agy-update" type="button">立即更新 agy</button>
+          <button class="btn-secondary" id="btn-rescan-models" type="button">重新扫描模型</button>
+          <button class="btn-secondary" id="btn-run-doctor" type="button">环境自检</button>
+        </div>
+        <div class="log-box-wrap">
+          <div class="log-box-label">维护与升级输出</div>
+          <pre class="log-box mono" id="update-log-box">就绪。点击上方按钮执行更新或模型重同步。</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide-over Drawer: Built-in Dark Real-Time AI Process Terminal -->
+  <div class="overlay hidden" id="terminal-drawer" aria-hidden="true">
+    <div class="terminal-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="terminal-drawer-title">
+      <div class="terminal-drawer-header">
+        <div>
+          <h3 class="terminal-drawer-title" id="terminal-drawer-title">
+            <span class="mono">&gt;_</span> 实时 AI 进程终端
+          </h3>
+          <p class="terminal-drawer-subtitle">实时查看各角色思考摘要、工具调用路径与命令输出（不阻塞后台协同）</p>
+        </div>
+        <button class="terminal-close-btn" id="btn-close-terminal-drawer" type="button" title="关闭实时终端抽屉">✕</button>
+      </div>
+      <div class="terminal-toolbar">
+        <div class="terminal-filter-chips" id="terminal-filter-chips"></div>
+        <div class="terminal-ext-actions">
+          <button class="btn-term-primary" id="btn-term-ext-live-split" type="button">外部 Windows Terminal 分屏追踪实时流</button>
+          <button class="btn-term-dark" id="btn-term-ext-interactive" type="button">拉起交互式 CLI</button>
+          <button class="btn-term-dark" id="btn-term-clear" type="button">清空</button>
+        </div>
+      </div>
+      <div class="terminal-viewport" id="terminal-viewport"></div>
+      <div class="terminal-footer">
+        <span id="terminal-line-count">当前显示 0 行</span>
+        <span>提示：可按 Esc 关闭抽屉；外部终端支持无限回溯完整日志</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: CLI Launcher -->
+  <div class="overlay hidden" id="cli-modal">
+    <div class="modal-card">
+      <div class="drawer-header">
+        <div>
+          <h3 class="drawer-title">拉起外部终端窗口</h3>
+          <p class="drawer-subtitle" id="cli-host-desc">自动识别本机终端环境</p>
+        </div>
+        <button class="btn-icon" id="btn-close-cli-modal" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="inline-check mcp-check">
+          <input type="checkbox" id="chk-mount-mcp" checked />
+          <span>挂载群聊互通 MCP (<span class="mono">mcp-stdio</span>)，让外部交互式终端可读写群消息板</span>
+        </label>
+        <div class="cli-action-stack">
+          <button class="btn-primary" id="btn-launch-live-split" type="button">外部 Windows Terminal 分屏追踪实时流</button>
+          <button class="btn-secondary" id="btn-launch-split-cli" type="button">一键分屏拉起全编队交互式 CLI</button>
+          <button class="btn-secondary" id="btn-launch-blank-cli" type="button">打开单个独立 agy 终端</button>
+        </div>
+        <p class="modal-footnote">
+          提示：点击左侧任意模型卡片右下角的 <span class="mono">[&gt;_]</span>，可随时打开内置实时流、外窗追踪或接管当前对话。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slot Quick CLI Context Popover -->
+  <div class="slot-cli-menu hidden" id="slot-cli-menu">
+    <button type="button" class="menu-item" id="menu-cli-live-drawer">查看内置实时进程流</button>
+    <button type="button" class="menu-item" id="menu-cli-live-ext">外部终端追踪该角色实时流</button>
+    <button type="button" class="menu-item" id="menu-cli-attach">接管当前会话 CLI (--conversation)</button>
+    <button type="button" class="menu-item" id="menu-cli-fresh">新建同模型独立 CLI</button>
+  </div>
+
+  <!-- Compact Scrollable Report & Blocker Modal -->
+  <div class="overlay hidden" id="report-modal-overlay" aria-hidden="true">
+    <div class="report-modal-card" id="report-modal-card" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
+      <div class="report-modal-header">
+        <div class="report-modal-title-row">
+          <div class="report-modal-title-group">
+            <span class="report-modal-badge" id="report-modal-badge">项目验收通过</span>
+            <h3 class="report-modal-title" id="report-modal-title">项目验收报告</h3>
+          </div>
+          <button class="btn-icon" id="btn-close-report-modal" type="button" title="关闭弹窗">✕</button>
+        </div>
+        <div class="report-metric-pills" id="report-modal-pills"></div>
+      </div>
+      <div class="report-modal-scroll" id="report-modal-body"></div>
+      <div class="report-modal-footer">
+        <div class="report-modal-footer-group">
+          <button class="btn-secondary" id="btn-report-copy" type="button">一键复制全文</button>
+          <button class="btn-secondary" id="btn-report-export-md" type="button">导出 Markdown</button>
+          <button class="btn-primary hidden" id="btn-report-reply-blocker" type="button">去输入框回复拍板</button>
+        </div>
+        <button class="btn-secondary" id="btn-report-dismiss" type="button">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-stack" id="toast-stack"></div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

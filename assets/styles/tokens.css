@@ -1,0 +1,116 @@
+:root {
+  /* 背景层级：宣纸暖白与素白卡片 */
+  --bg-canvas: #F7F6F2;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #F0EFEA;
+  --bg-hover: #EAE8E1;
+  --border-hairline: #E5E3DC;
+  --border-strong: #D5D2C8;
+
+  /* 文本层级：徽墨松烟 */
+  --text-primary: #1F2328;
+  --text-secondary: #5E6670;
+  --text-muted: #959DA5;
+
+  /* 品牌主色：竹青黛绿 */
+  --accent-jade: #2D6A5B;
+  --accent-jade-hover: #24574A;
+  --accent-jade-soft: #EAF3F0;
+
+  /* 三大角色低饱和矿物色标 */
+  --role-arch-fg: #36587A;
+  --role-arch-bg: #EDF2F7;
+  --role-coder-fg: #2D6A5B;
+  --role-coder-bg: #EAF3F0;
+  --role-rev-fg: #946230;
+  --role-rev-bg: #FBF3EA;
+
+  /* 语义状态色 */
+  --state-rework-fg: #B54738;
+  --state-rework-bg: #FCF0EE;
+  --state-warn-fg: #9A6700;
+  --state-warn-bg: #FDF6E3;
+  --state-ok-fg: #266A4A;
+  --state-ok-bg: #EAF6EF;
+
+  /* 圆角、阴影与排版 */
+  --shadow-card: 0 2px 8px rgba(24, 28, 32, 0.035);
+  --shadow-float: 0 10px 30px rgba(24, 28, 32, 0.12);
+  --radius-sm: 6px;
+  --radius-card: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+/* 细腻低存在感滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(94, 102, 112, 0.22);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(94, 102, 112, 0.38);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
